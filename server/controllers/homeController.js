@@ -1,5 +1,67 @@
 require('../models/database');
 const contacts = require('../models/contacts');
+const {google} = require('googleapis');
+const path = require('path');
+const fs = require('fs');
+const mime = require('mime-types')
+
+const CLIENT_ID = '412368104033-rqmo72mhcn4b17om2ll5nejselvgu5uk.apps.googleusercontent.com';
+const CLIENT_SECRET = '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';
+const REDIRECT_URI = 'https://developers.google.com/oauthplayground';
+const REFRESH_TOKEN = '1//04xIA94AImcYVCgYIARAAGAQSNwF-L9IrC1lNyuaojjwUhmLhc8ywBZPUAzJgbX0M_jAGiFMe9iGtNEW4keDWfP2McfzJsp_eMRE';
+const oAuth2Client = new google.auth.OAuth2(
+    CLIENT_ID,
+    CLIENT_SECRET,
+    REDIRECT_URI
+);
+
+oAuth2Client.setCredentials({refresh_token: REFRESH_TOKEN})
+
+const drive = google.drive({
+    version: 'v3',
+    auth: oAuth2Client
+});
+
+//Upload image to google drive
+async function UploadFile(imageName, imagePath) {
+    try {
+        const response = await drive.files.create({
+            requestBody: {
+                name: imageName,
+                mimeType: mime.extension(imageName)
+            },
+            media: {
+                mimeType: mime.extension(imageName),
+                body: fs.createReadStream(imagePath)
+            },
+            fields: 'id'
+        });
+
+        let id = response.data.id;
+        
+        return id;
+    }
+    catch(error) {
+        respond.status(500).send({message: error.message || "Error"});
+    }
+}
+
+//Change google drive permission
+async function DrivePermission(fieldID) {
+    try {
+        const id = fieldID;
+        await drive.permissions.create({
+            fileId: id,
+            requestBody: {
+                role: 'reader',
+                type: 'anyone'
+            }
+        })
+    } 
+    catch (error) {
+        respond.status(500).send({message: error.message || "Error"});
+    }
+}
 
 //View Phonebook
 exports.viewPhonebook = async(request, respond) =>{
@@ -26,7 +88,7 @@ exports.addContactView = async(request, respond) =>{
 
 exports.addContact = async(request, respond) =>{
     try {
-        let imageFile, imagePath, imageName;
+        let imageFile, imagePath, imageName, uploadToDrive, drivePermission;
 
         if(!request.files || Object.keys(request.files).length === 0)
         {
@@ -49,16 +111,19 @@ exports.addContact = async(request, respond) =>{
                 imageFile.mv(imagePath,function(err){
                     if(err) return respond.status(500).send(err);
                 })
-
+                
+                uploadToDrive = await UploadFile(imageName, imagePath);
+                drivePermission = await DrivePermission(uploadToDrive);
                 
                 const newContact = new contacts({
-                    profilePic: imageName,
+                    profilePic: uploadToDrive,
                     name: request.body.name,
                     contactNo: request.body.contactNo,
                 });
 
                 await newContact.save();
-
+                fs.unlinkSync(imagePath);
+                
                 request.flash('addSubmit','Contact added successfully.');
                 respond.redirect('/addContactView');
             }
@@ -87,7 +152,7 @@ exports.editContactView = async(request, respond) =>{
 
 exports.editContact = async(request, respond) => {
     try {
-        let imageFile, imagePath, imageName;
+        let imageFile, imagePath, imageName, uploadToDrive, drivePermission;
 
         if(!request.files || Object.keys(request.files).length === 0)
         {
@@ -97,7 +162,6 @@ exports.editContact = async(request, respond) => {
                 contactNo: request.body.contactNo,
             });
 
-            console.log(request.body.id);
             let p = await contacts.updateOne({_id: request.body.id},{
                 name: newContacts.name,
                 contactNo: newContacts.contactNo
@@ -123,9 +187,12 @@ exports.editContact = async(request, respond) => {
                 imageFile.mv(imagePath,function(err){
                     if(err) return respond.status(500).send(err);
                 })
+                
+                uploadToDrive = await UploadFile(imageName, imagePath);
+                drivePermission = await DrivePermission(uploadToDrive);
 
                 const newContacts = new contacts({
-                    profilePic: imageName,
+                    profilePic: uploadToDrive,
                     name: request.body.name,
                     contactNo: request.body.contactNo,
                 });
@@ -135,6 +202,8 @@ exports.editContact = async(request, respond) => {
                     name: newContacts.name,
                     contactNo: newContacts.contactNo,
                 },{new: true});
+                
+                fs.unlinkSync(imagePath);
 
                 request.flash('editSubmit','Contact updated successfully.');
                 respond.redirect('/editContactView/' + request.body.id);
@@ -161,7 +230,7 @@ exports.deleteContact = async(request, respond) =>{
     }
 }
 
-//check image file extension
+//Check image file extension
 function checkImgextension(imageName)
 {
     if ( /\.(jpe?g|png|gif|bmp)$/i.test(imageName) === false ) 
