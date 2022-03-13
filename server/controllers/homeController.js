@@ -101,7 +101,10 @@ exports.editContact = async(request, respond) => {
             let p = await contacts.updateOne({_id: request.body.id},{
                 name: newContacts.name,
                 contactNo: newContacts.contactNo
-            })        
+            })
+
+            request.flash('editSubmit','Contact updated successfully.');
+            respond.redirect('/editContactView/' + request.body.id);
         }
         else
         {
