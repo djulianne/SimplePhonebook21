@@ -37,22 +37,32 @@ exports.addContact = async(request, respond) =>{
             imageFile = request.files.profilePic;
             imageName = Date.now() + imageFile.name;
 
-            imagePath = require('path').resolve('./')+'/content/images/'+ imageName
+            if (checkImgextension(imageName) == false) 
+            {
+                request.flash('addErrors','Not an image.');
+                respond.redirect('/addContactView');
+            }
+            else
+            {
+                imagePath = require('path').resolve('./')+'/content/images/'+ imageName
 
-            imageFile.mv(imagePath,function(err){
-                if(err) return respond.status(500).send(err);
-            })
+                imageFile.mv(imagePath,function(err){
+                    if(err) return respond.status(500).send(err);
+                })
+
+                
+                const newContact = new contacts({
+                    profilePic: imageName,
+                    name: request.body.name,
+                    contactNo: request.body.contactNo,
+                });
+
+                await newContact.save();
+
+                request.flash('addSubmit','Contact added successfully.');
+                respond.redirect('/addContactView');
+            }
         }
-        const newContact = new contacts({
-            profilePic: imageName,
-            name: request.body.name,
-            contactNo: request.body.contactNo,
-        });
-
-        await newContact.save();
-
-        request.flash('addSubmit','Contact added successfully.');
-        respond.redirect('/addContactView');
     }
     catch (error) {
         respond.json(error);
@@ -98,27 +108,35 @@ exports.editContact = async(request, respond) => {
             imageFile = request.files.profilePic;
             imageName = Date.now() + imageFile.name;
 
-            imagePath = require('path').resolve('./')+'/content/images/'+ imageName
+            if (checkImgextension(imageName) == false)
+            {
+                request.flash('editErrors','Not an image.');
+                respond.redirect('/editContactView/' + request.body.id);
+            }
+            else
+            {
+                imagePath = require('path').resolve('./')+'/content/images/'+ imageName
 
-            imageFile.mv(imagePath,function(err){
-                if(err) return respond.status(500).send(err);
-            })
+                imageFile.mv(imagePath,function(err){
+                    if(err) return respond.status(500).send(err);
+                })
 
-            const newContacts = new contacts({
-                profilePic: imageName,
-                name: request.body.name,
-                contactNo: request.body.contactNo,
-            });
+                const newContacts = new contacts({
+                    profilePic: imageName,
+                    name: request.body.name,
+                    contactNo: request.body.contactNo,
+                });
 
-            let p = await contacts.updateOne({_id: request.body.id},{
-                image: newContacts.profilePic,
-                name: newContacts.name,
-                contactNo: newContacts.contactNo,
-            },{new: true});
+                let p = await contacts.updateOne({_id: request.body.id},{
+                    profilePic: newContacts.profilePic,
+                    name: newContacts.name,
+                    contactNo: newContacts.contactNo,
+                },{new: true});
+
+                request.flash('editSubmit','Contact updated successfully.');
+                respond.redirect('/editContactView/' + request.body.id);
+            }
         }
-
-        request.flash('editSubmit','Contact updated successfully.');
-        respond.redirect('/editContactView/' + request.body.id);
     }
     catch (error) {
         respond.json(error);
@@ -137,5 +155,18 @@ exports.deleteContact = async(request, respond) =>{
     }
     catch(error) {
         respond.status(500).send({message: error.message || "Error"});
+    }
+}
+
+//check image file extension
+function checkImgextension(imageName)
+{
+    if ( /\.(jpe?g|png|gif|bmp)$/i.test(imageName) === false ) 
+    {
+        return false;
+    }
+    else
+    {
+        return true;
     }
 }
